@@ -23,16 +23,16 @@ DOCUMENTATION = """
 module: ec2_scaling_policy
 short_description: Create or delete AWS scaling policies for Autoscaling groups
 description:
-  - Can create or delete scaling policies for autoscaling groups
+  - Can create, delete or execute scaling policies for autoscaling groups
   - Referenced autoscaling groups must already exist
 version_added: "1.6"
 author: "Zacharie Eakin (@zeekin)"
 options:
   state:
     description:
-      - register or deregister the policy
+      - register, deregister or execute the policy
     required: true
-    choices: ['present', 'absent']
+    choices: ['present', 'absent', 'executed']
   name:
     description:
       - Unique name for the scaling policy
@@ -141,6 +141,20 @@ def create_scaling_policy(connection, module):
         except BotoServerError as e:
             module.fail_json(msg=str(e))
 
+def execute_scaling_policy(connection, module):
+    sp_name = module.params.get('name')
+    asg_name = module.params.get('asg_name')
+
+    scalingPolicies = connection.get_all_policies(as_group=asg_name,policy_names=[sp_name])
+
+    if scalingPolicies:
+        try:
+            connection.execute_policy(sp_name, asg_name)
+            module.exit_json(changed=True)
+        except BotoServerError as e:
+            module.exit_json(changed=False, msg=str(e))
+    else:
+        module.exit_json(changed=False)
 
 def delete_scaling_policy(connection, module):
     sp_name = module.params.get('name')
@@ -168,7 +182,7 @@ def main():
             scaling_adjustment = dict(type='int'),
             min_adjustment_step = dict(type='int'),
             cooldown = dict(type='int'),
-            state=dict(default='present', choices=['present', 'absent']),
+            state=dict(default='present', choices=['present', 'absent', 'executed']),
         )
     )
 
@@ -190,6 +204,8 @@ def main():
         create_scaling_policy(connection, module)
     elif state == 'absent':
         delete_scaling_policy(connection, module)
+    elif state == 'executed':
+        execute_scaling_policy(connection, module)
 
 
 if __name__ == '__main__':
